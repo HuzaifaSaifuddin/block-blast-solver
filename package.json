@@ -1,0 +1,14 @@
+{
+  "name": "block-blast-solver",
+  "version": "2.0.0",
+  "description": "Optimal placement solver for the Block Blast puzzle. Pure static web app, no build step, runs entirely in the browser.",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/solver.test.js",
+    "start": "npx --yes serve -l 5173 .",
+    "dev": "python3 -m http.server 5173"
+  },
+  "keywords": ["block-blast", "puzzle", "solver", "pwa"],
+  "files": ["index.html", "assets/", "js/", "tests/", "sw.js", "manifest.webmanifest"]
+}

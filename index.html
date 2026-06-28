@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="description" content="Block Blast Solver — draw your 8×8 board and pieces, then get the optimal placement that fits the most pieces and clears the most lines. Runs entirely in your browser." />
+  <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
+  <title>Block Blast Solver</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <!-- ===== Header ===== -->
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" fill="#fff"/><rect x="13" y="3" width="8" height="8" rx="2" fill="#fff" opacity=".55"/><rect x="3" y="13" width="8" height="8" rx="2" fill="#fff" opacity=".55"/><rect x="13" y="13" width="8" height="8" rx="2" fill="#fff"/></svg>
+      </span>
+      <div class="titles">
+        <h1>Block Blast Solver</h1>
+        <p class="sub">Draw the board and pieces, then Solve — runs locally in your browser.</p>
+      </div>
+    </div>
+    <span class="spacer"></span>
+    <button id="themeToggle" class="icon-btn" aria-pressed="false" title="Toggle dark mode" aria-label="Toggle dark mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+  </header>
+
+  <!-- ===== Inputs card ===== -->
+  <section class="panel" aria-labelledby="inputs-title">
+    <h2 id="inputs-title" class="sec-title" style="position:absolute;left:-9999px">Inputs</h2>
+    <div class="io">
+      <!-- Board -->
+      <div class="board">
+        <div class="sec-head">
+          <h3 class="sec-title">Main grid <span class="dim">8 × 8</span></h3>
+          <button id="clearMainBtn" class="tiny">clear</button>
+        </div>
+        <div id="mainGrid"></div>
+      </div>
+      <!-- Pieces -->
+      <div class="pieces">
+        <div class="sec-head">
+          <h3 class="sec-title">Pieces <span class="dim">5 × 5 each · only filled cells matter</span></h3>
+        </div>
+        <div class="blocks-wrap" id="blocks"></div>
+        <p class="hint">Tip: draw a piece by clicking and dragging. Leave a piece blank to skip it. Press <strong>⌘/Ctrl + Enter</strong> to solve.</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="solveBtn" class="primary">Solve</button>
+      <button id="resetBtn">Reset all</button>
+    </div>
+  </section>
+
+  <!-- ===== Solution card ===== -->
+  <section class="panel" aria-labelledby="sol-title">
+    <div class="sec-head">
+      <h2 id="sol-title" class="sec-title">Solution</h2>
+      <div id="applyBar" class="controls" hidden>
+        <button id="applyBtn" class="primary">Use this as the new board</button>
+      </div>
+    </div>
+    <div id="out" aria-live="polite"><p class="muted">Draw a board and pieces, then hit Solve.</p></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--filled)"></span>filled</span>
+      <span><span class="swatch" style="background:var(--placed)"></span>just placed</span>
+      <span><span class="swatch" style="background:transparent;box-shadow:0 0 0 2px var(--clear) inset"></span>about to clear</span>
+    </div>
+  </section>
+
+  <p class="foot">100% local · no accounts, no tracking · <a href="tests/index.html">solver tests</a></p>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/solver.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
