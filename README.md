@@ -1,15 +1,18 @@
 # Block Blast Solver
 
 Draw your 8×8 board and your three pieces, hit **Solve**, and get the optimal
-plan — the placement that fits the most pieces and clears the most lines. It
-runs entirely in your browser: no accounts, no network, no tracking.
+plan — the placement that fits the most pieces, then leaves the board in the
+healthiest shape for whatever comes next. It runs entirely in your browser: no
+accounts, no network, no tracking.
 
 ![Block Blast Solver](assets/icon.svg)
 
 ## Features
 
-- **Optimal solver** — exhaustive search over every order and position; picks the
-  plan that places the most pieces, then clears the most lines.
+- **Optimal solver** — exhaustive search over every order and position. Survival
+  comes first (place the most pieces), then it maximizes a board-health score —
+  keeping space open, avoiding dead pockets, and favoring big multi-line combo
+  clears over scattered single ones.
 - **Works everywhere** — mouse, touch, and pen drag-painting (Pointer Events),
   plus full keyboard control (arrow keys to move, Space/Enter to toggle).
 - **Step-by-step solution** — each move shows the placement and the resulting
@@ -66,9 +69,9 @@ input handling, persistence, and theming. There are no inline event handlers
 and no `eval`/JSON-in-attributes, which keeps the app
 [Content-Security-Policy](https://developer.mozilla.org/docs/Web/HTTP/CSP)-friendly.
 
-Search is `O((N²)^k)` worst case for `k` pieces, but `k ≤ 3`, so it completes in
-well under a millisecond. The on-screen "explored placements" counter reports the
-real work done.
+Search is `O((N²)^k)` worst case for `k` pieces, but `k ≤ 3`, so it stays
+effectively instant — a few milliseconds at most. The on-screen timing and
+"explored placements" counter report the real work done.
 
 ## License
 
