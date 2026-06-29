@@ -19,29 +19,15 @@ accounts, no network, no tracking.
   board, with "just placed" and "about to clear" highlighting.
 - **Carry forward** — apply the solved result as your new board for the next round.
 - **Light & dark themes** — follows your system preference, with a manual toggle.
-- **Offline-ready PWA** — installable, works with no connection.
 - **Persistent** — your board and pieces survive a refresh (localStorage).
-- **Tested** — the solver core has a unit-test suite that runs in Node and the browser.
 
 ## Run it
 
-It's a static site with **no build step**.
+It's a static site with **no build step**. Just open `index.html` in a browser,
+or serve the folder with any static server:
 
 ```bash
-# Any static server works. Two convenient options:
-npm start          # serves on http://localhost:5173 via `serve`
-npm run dev        # serves on http://localhost:5173 via python3
-```
-
-You can also just open `index.html` directly in a browser. (A server is only
-needed for the installable/offline PWA bits; the solver itself works from
-`file://`.)
-
-## Test
-
-```bash
-npm test                      # runs the solver suite in Node
-# or open tests/index.html in a browser for the visual report
+python3 -m http.server 5173   # then visit http://localhost:5173
 ```
 
 ## Project structure
@@ -50,15 +36,10 @@ npm test                      # runs the solver suite in Node
 index.html              Semantic markup, loads the modules
 assets/
   styles.css            Design system: tokens, light/dark, responsive
-  icon.svg              App icon (used by favicon + PWA manifest)
+  icon.svg              App icon (used by the favicon)
 js/
   solver.js             Pure solving engine — zero DOM, fully testable
   app.js                UI layer — rendering, input, persistence, theming
-tests/
-  solver.test.js        Unit tests (Node + browser)
-  index.html            Visual test report
-sw.js                   Service worker (offline caching)
-manifest.webmanifest    PWA manifest
 ```
 
 ## Architecture notes

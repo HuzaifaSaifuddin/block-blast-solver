@@ -323,12 +323,6 @@
   }
 
   // --------------------------------------------------------------- init -----
-  function registerServiceWorker() {
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    }
-  }
-
   function init() {
     load();
     initTheme();
@@ -345,8 +339,6 @@
     document.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); solveNow(); }
     });
-
-    registerServiceWorker();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
