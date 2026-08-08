@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://huzaifasaifuddin.github.io/block-blast-solver/sitemap.xml
