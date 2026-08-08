@@ -52,9 +52,14 @@
     <div class="actions">
       <button id="solveBtn" class="primary">Solve</button>
       <button id="resetBtn">Reset all</button>
-      <label class="switch" title="Replay every placement the solver explores">
-        <input type="checkbox" id="traceToggle" /> <span>Visualize the search</span>
-      </label>
+      <div class="toggles">
+        <label class="switch" title="Uncheck to only see whether a solution exists (and how many), not the actual placement">
+          <input type="checkbox" id="showSolutionToggle" checked /> <span>Show solution</span>
+        </label>
+        <label class="switch" title="Replay every placement the solver explores">
+          <input type="checkbox" id="traceToggle" /> <span>Visualize the search</span>
+        </label>
+      </div>
     </div>
   </section>
 

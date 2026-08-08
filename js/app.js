@@ -13,11 +13,21 @@
   const STORAGE_KEY = "block-blast-solver:v2";
   const THEME_KEY = "block-blast-solver:theme";
   const TRACE_KEY = "block-blast-solver:trace";
+  const SHOW_SOL_KEY = "block-blast-solver:showSolution";
 
   // --------------------------------------------------------------- state ----
   let board = emptyBoard();
   let pieces = [emptyPiece(), emptyPiece(), emptyPiece()];
   let pendingFinal = null; // result board awaiting "use as new board"
+
+  // Cache of the last solve, so the "Visualize the search" / "Show solution"
+  // toggles can update the display immediately without needing another click
+  // on Solve. renderSolution() reads current toggle state and re-derives the
+  // display from this each time; computeSolve() only reruns the actual search.
+  let lastList = null;
+  let lastBoard = null;
+  let lastRes = null;
+  let lastMs = 0;
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -218,6 +228,32 @@
     return h + "</div>";
   }
 
+  // "N complete plans found" — folded inline into whichever summary sentence
+  // is already on screen, rather than repeating it under its own heading.
+  function solutionsNote(solutions) {
+    return solutions ? ` ${solutions.toLocaleString()} complete plan${solutions !== 1 ? "s" : ""} found.` : "";
+  }
+
+  // How many DISTINCT complete plans exist (every way to place all pieces,
+  // not just the one shown below) and how many lines each clears — answers
+  // "is a solution even available" at a glance, before reading any steps.
+  function densityHTML(histogram, solutions) {
+    if (!solutions) return "";
+    const buckets = Object.keys(histogram).map(Number).sort((a, b) => a - b);
+    const max = Math.max(...buckets.map((k) => histogram[k]));
+    const rows = buckets.map((k) => {
+      const count = histogram[k];
+      const pct = (count / solutions) * 100;
+      const width = Math.max(4, Math.round((count / max) * 100));
+      return `<div class="densityrow" title="${count.toLocaleString()} plans (${pct.toFixed(1)}%) clear exactly ${k} line${k !== 1 ? "s" : ""}">
+        <span class="densitylabel">${k} line${k !== 1 ? "s" : ""}</span>
+        <span class="densitybar"><span class="densityfill" style="width:${width}%"></span></span>
+        <span class="densityval">${count.toLocaleString()}</span>
+      </div>`;
+    }).join("");
+    return `<div class="densitywrap">${rows}</div>`;
+  }
+
   // ---------------------------------------------- search visualizer ---------
   // Animated replay of every placement the solver tried, in visitation order.
   // A trace can be tens of thousands of frames, so playback is a real media
@@ -391,30 +427,63 @@
     speed.addEventListener("input", (e) => { player.delay = +e.target.value; updateSpeedLabel(); });
   }
 
-  function solveNow() {
-    const out = $("#out");
-    const list = [];
-    for (let b = 0; b < 3; b++) {
-      const offsets = toOffsets(pieces[b]);
-      if (offsets.length) list.push({ id: b + 1, offsets });
-    }
-    if (!list.length) {
-      out.innerHTML = '<p class="note bad">No pieces to place — draw at least one piece.</p>';
-      $("#applyBar").hidden = true;
+  function computeSolve(needTrace) {
+    const t0 = performance.now();
+    lastRes = solve(lastBoard, lastList, { trace: needTrace });
+    lastMs = performance.now() - t0;
+  }
+
+  // The trace panel is a separate <section>, not part of #out — so "Visualize
+  // the search" is a PLAIN show/hide, no re-render of the solution needed.
+  // Only exception: if the trace wasn't computed yet (e.g. it was suppressed
+  // because "Show solution" was off at solve time), turning it on needs one
+  // fresh (still fast) solve to actually get the frames.
+  function updateTraceVisibility() {
+    if (!lastList || !lastRes || lastRes.placed === 0) { hideTrace(); return; }
+    const wanted = $("#traceToggle").checked && $("#showSolutionToggle").checked; // tracing replays the winning path — a spoiler when hiding it
+    if (!wanted) { hideTrace(); return; }
+    if (!lastRes.trace) computeSolve(true);
+    if (lastRes.trace && lastRes.trace.length) {
+      markAccepted(lastRes.trace, lastRes.steps);
+      buildTracePlayer(lastRes.trace, lastRes.traceTruncated, lastRes.explored);
+      $("#tracePanel").hidden = false;
+    } else {
       hideTrace();
+    }
+  }
+
+  // Rebuilds #out from the cached lastRes/lastList. This one CAN'T be a plain
+  // CSS show/hide: unchecking "Show solution" swaps in genuinely different
+  // content (no steps, no positions, no apply button) — merely hiding the
+  // full solution would still leave it sitting in the DOM, readable via dev
+  // tools, which defeats the point of hiding it.
+  function renderSolution() {
+    const out = $("#out");
+    if (!lastList) return; // nothing solved yet
+
+    if (lastRes.placed === 0) {
+      out.innerHTML = '<p class="note bad">No piece can be placed on this board at all.</p>';
+      $("#applyBar").hidden = true;
       return;
     }
 
-    const traceOn = $("#traceToggle").checked;
-    const t0 = performance.now();
-    const res = solve(board, list, { trace: traceOn });
-    const ms = performance.now() - t0;
-    const steps = res.steps;
+    const showSolution = $("#showSolutionToggle").checked;
+    const res = lastRes, ms = lastMs, list = lastList, steps = res.steps;
 
-    if (res.placed === 0) {
-      out.innerHTML = '<p class="note bad">No piece can be placed on this board at all.</p>';
+    const timing = `<p class="hint">Solved in ${ms < 1 ? ms.toFixed(2) : ms.toFixed(1)} ms
+      — explored ${res.explored.toLocaleString()} placement${res.explored !== 1 ? "s" : ""}.</p>`;
+    const density = densityHTML(res.histogram, res.solutions);
+
+    if (!showSolution) {
+      // Reveal only whether a full solution exists and how many ways — no
+      // placement, no positions, no step cards, no "apply" (that would give
+      // the result away too).
+      const summary = res.solutions
+        ? `<p class="note good">A solution exists — all ${list.length} piece${list.length !== 1 ? "s" : ""} can be placed.${solutionsNote(res.solutions)}</p>`
+        : `<p class="note bad">No way to place all ${list.length} piece${list.length !== 1 ? "s" : ""} was found (best case places ${res.placed} of ${list.length}).</p>`;
+      out.innerHTML = `<div class="solhead"><div>${summary}${timing}</div>${density}</div>`;
       $("#applyBar").hidden = true;
-      hideTrace();
+      pendingFinal = null;
       return;
     }
 
@@ -425,12 +494,10 @@
         Cleared ${res.clears} line${res.clears !== 1 ? "s" : ""}.</p>`;
     } else {
       summary = `<p class="note good">Placed all ${res.placed} pieces &mdash;
-        cleared ${res.clears} line${res.clears !== 1 ? "s" : ""} (the most possible).</p>`;
+        cleared ${res.clears} line${res.clears !== 1 ? "s" : ""} (the most possible).${solutionsNote(res.solutions)}</p>`;
     }
-    const timing = `<p class="hint">Solved in ${ms < 1 ? ms.toFixed(2) : ms.toFixed(1)} ms
-      — explored ${res.explored.toLocaleString()} placement${res.explored !== 1 ? "s" : ""}.</p>`;
 
-    let html = `<div class="solhead"><div>${summary}${timing}</div></div><div class="steps">`;
+    let html = `<div class="solhead"><div>${summary}${timing}</div>${density}</div><div class="steps">`;
     steps.forEach((s, i) => {
       const placedSet = new Set(s.placedCells.map(([r, c]) => r + "," + c));
       const clearSet = new Set();
@@ -460,15 +527,30 @@
 
     pendingFinal = steps[steps.length - 1].after;
     $("#applyBar").hidden = false;
+  }
 
-    // Search visualizer: replay every explored placement, or tear it down.
-    if (traceOn && res.trace && res.trace.length) {
-      markAccepted(res.trace, steps);
-      buildTracePlayer(res.trace, res.traceTruncated, res.explored);
-      $("#tracePanel").hidden = false;
-    } else {
-      hideTrace();
+  function solveNow() {
+    const list = [];
+    for (let b = 0; b < 3; b++) {
+      const offsets = toOffsets(pieces[b]);
+      if (offsets.length) list.push({ id: b + 1, offsets });
     }
+    if (!list.length) {
+      lastList = null;
+      lastRes = null;
+      $("#out").innerHTML = '<p class="note bad">No pieces to place — draw at least one piece.</p>';
+      $("#applyBar").hidden = true;
+      hideTrace();
+      return;
+    }
+
+    lastList = list;
+    lastBoard = board.map((row) => row.slice());
+    const showSolution = $("#showSolutionToggle").checked;
+    const traceOn = $("#traceToggle").checked && showSolution;
+    computeSolve(traceOn);
+    renderSolution();
+    updateTraceVisibility();
   }
 
   function applyFinal() {
@@ -478,23 +560,38 @@
     renderBoard();
     renderPieces();
     save();
+    lastList = null;
+    lastRes = null;
     $("#out").innerHTML = '<p class="muted">Board updated. Draw the next pieces and Solve again.</p>';
     $("#applyBar").hidden = true;
     pendingFinal = null;
+    hideTrace();
     toast("Board updated with the solved result");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // --------------------------------------------------------- utilities ------
-  function clearBoard() { board = emptyBoard(); renderBoard(); save(); }
+  function clearBoard() {
+    board = emptyBoard();
+    renderBoard();
+    save();
+    lastList = null;
+    lastRes = null;
+    $("#out").innerHTML = '<p class="muted">Draw a board and pieces, then hit Solve.</p>';
+    $("#applyBar").hidden = true;
+    hideTrace();
+  }
   function resetAll() {
     board = emptyBoard();
     pieces = [emptyPiece(), emptyPiece(), emptyPiece()];
     pendingFinal = null;
     renderBoard();
     renderPieces();
+    lastList = null;
+    lastRes = null;
     $("#out").innerHTML = '<p class="muted">Draw a board and pieces, then hit Solve.</p>';
     $("#applyBar").hidden = true;
+    hideTrace();
     save();
     toast("Everything reset");
   }
@@ -521,12 +618,33 @@
     $("#applyBtn").addEventListener("click", applyFinal);
     $("#themeToggle").addEventListener("click", toggleTheme);
 
-    // Search-visualizer toggle: remember the choice; tear the player down when off.
     const traceToggle = $("#traceToggle");
+    const showSolutionToggle = $("#showSolutionToggle");
+
+    // "Visualize the search" has no effect while the solution is hidden (it
+    // would replay the winning path — a spoiler), so disable it rather than
+    // leave a control on screen that silently does nothing.
+    const syncTraceAvailability = () => { traceToggle.disabled = !showSolutionToggle.checked; };
+
+    // Show-solution toggle: checked by default. Needs a real re-render
+    // (different content, see renderSolution's comment), plus it can affect
+    // whether the trace panel should be showing and whether trace is usable.
+    showSolutionToggle.checked = localStorage.getItem(SHOW_SOL_KEY) !== "0";
+    showSolutionToggle.addEventListener("change", () => {
+      localStorage.setItem(SHOW_SOL_KEY, showSolutionToggle.checked ? "1" : "0");
+      syncTraceAvailability();
+      renderSolution();
+      updateTraceVisibility();
+    });
+    syncTraceAvailability();
+
+    // Search-visualizer toggle: remember the choice, and plain show/hide the
+    // (already separate) trace panel immediately — no need to hit Solve again,
+    // and no need to touch #out at all.
     traceToggle.checked = localStorage.getItem(TRACE_KEY) === "1";
     traceToggle.addEventListener("change", () => {
       localStorage.setItem(TRACE_KEY, traceToggle.checked ? "1" : "0");
-      if (!traceToggle.checked) hideTrace();
+      updateTraceVisibility();
     });
 
     // Keyboard shortcut: Ctrl/Cmd+Enter solves.

@@ -207,8 +207,19 @@
    * evaluation term lands at each leaf, the recursive max is a true global max
    * over all placement orders and positions.
    *
-   * Returns { steps, placed, clears, score, skipped, explored } where each step
-   * is { id, top, left, before, placedCells, rows, cols, after }.
+   * Returns { steps, placed, clears, score, skipped, explored, histogram,
+   * solutions } where each step is { id, top, left, before, placedCells, rows,
+   * cols, after }.
+   *
+   * `histogram` and `solutions` describe every COMPLETE plan the search visits
+   * (every legal way to place all `pieces`, not just the best one) — this is
+   * the same traversal `explored` already tallies, just grouped differently.
+   * `histogram` maps total-lines-cleared → how many complete plans clear
+   * exactly that many lines; `solutions` is the sum, i.e. "is a full solution
+   * even possible, and how many ways." Order-only permutations of
+   * identically-shaped pieces are not double-counted (see shape dedup below).
+   * If no plan places every piece, `solutions` is 0 and `histogram` is empty —
+   * that alone answers "is a solution available" without reading `steps`.
    *
    * Pass `opts.trace = true` to also record, in visitation order, EVERY placement
    * the search actually tries (the same events the `explored` counter tallies).
@@ -232,6 +243,7 @@
     opts = opts || {};
     const trace = opts.trace ? [] : null; // recorded placements, in visit order
     let explored = 0;
+    const hist = {}; // total lines cleared -> count of COMPLETE (all-pieces) plans
 
     // Identical-shaped pieces are interchangeable, so trying every ordering of
     // them just re-discovers the same boards k! times. Tag each piece with a
@@ -242,7 +254,14 @@
     // slot of the plan the placement being tried belongs to (0-based).
     // `og` (origin grid) mirrors `g`, cell-for-cell: og[r][c] is the depth that
     // filled g[r][c], or null. Only maintained when tracing; null otherwise.
-    function search(g, remaining, depth, og) {
+    // `linesSoFar` is the lines-cleared total accumulated on the path down to
+    // this node, so a leaf can log a complete plan's total in one O(1) step.
+    function search(g, remaining, depth, og, linesSoFar) {
+      // `remaining` only reaches empty by placing one piece per recursion
+      // level, so this node is exactly "all given pieces got placed" — log it
+      // for the histogram regardless of whether it ends up the chosen plan.
+      if (remaining.length === 0) hist[linesSoFar] = (hist[linesSoFar] || 0) + 1;
+
       // Baseline: place nothing further. The final board is `g`, so its quality
       // is this leaf's score; whatever is left over is skipped.
       let best = {
@@ -275,7 +294,7 @@
             // search is being explored — only a later placement overwriting the
             // same cell (via stampGrid, above) replaces the ghost mark for real.
             const afterOrigin = trace ? clearGrid(stampGrid(og, offsets, t, l, depth), rows, cols, GHOST) : null;
-            const sub = search(after, rest, depth + 1, afterOrigin);
+            const sub = search(after, rest, depth + 1, afterOrigin, linesSoFar + lines);
             const candidate = {
               steps: [{ id, top: t, left: l, before: g, placedCells, rows, cols, after }, ...sub.steps],
               clears: lines + sub.clears,
@@ -296,8 +315,10 @@
     }
 
     const initialOrigin = trace ? Array.from({ length: N }, () => Array(N).fill(null)) : null;
-    const result = search(board, pieces, 0, initialOrigin);
+    const result = search(board, pieces, 0, initialOrigin, 0);
     result.explored = explored;
+    result.histogram = hist;
+    result.solutions = Object.values(hist).reduce((a, b) => a + b, 0);
     if (trace) {
       result.trace = trace;
       result.traceTruncated = explored > trace.length;
