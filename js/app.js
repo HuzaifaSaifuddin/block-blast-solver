@@ -257,8 +257,20 @@
       for (let c = 0; c < N; c++) {
         const key = r + "," + c;
         let cls = "tc";
+        const slot = f.origin && f.origin[r][c];
         if (placed.has(key)) cls += " try d" + (f.depth + 1);
-        else if (f.board[r][c]) cls += " on";
+        else if (f.board[r][c]) {
+          cls += " on";
+          // Colour already-settled cells by which slot (block 1/2/3) placed
+          // them, so earlier picks stay visible instead of blending into one
+          // generic "filled" colour once later pieces are being tried on top.
+          if (slot != null && slot >= 0) cls += " d" + (slot + 1);
+        } else if (slot === -1) {
+          // GHOST: this cell was cleared somewhere earlier in this branch and
+          // hasn't been refilled since — keep showing it blurred rather than
+          // letting it blink straight back to plain empty background.
+          cls += " ghost";
+        }
         if (clearing.has(key)) cls += " clearing";
         cellEls[r][c].className = cls;
       }
@@ -323,6 +335,13 @@
         <div class="traceboard" id="tbBoard"></div>
         <div class="tracemeta">
           <p class="tracelabel" id="tbLabel"></p>
+          <div class="legend tracelegend">
+            <span><span class="swatch" style="background:var(--step1)"></span>block 1</span>
+            <span><span class="swatch" style="background:var(--step2)"></span>block 2</span>
+            <span><span class="swatch" style="background:var(--step3)"></span>block 3</span>
+            <span><span class="swatch" style="box-shadow:0 0 0 2px var(--clear) inset;background:transparent"></span>about to clear</span>
+            <span><span class="swatch" style="background:var(--clear);opacity:.32;filter:blur(1px)"></span>just cleared</span>
+          </div>
           <input type="range" id="tbScrub" class="scrub" min="0" max="${frames.length - 1}" value="0" aria-label="Scrub through explored placements" />
           <div class="tracectrls">
             <button id="tbPlay" class="primary sm">▶ Play</button>

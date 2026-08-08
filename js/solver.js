@@ -19,6 +19,7 @@
   const N = 8;    // The play board is 8 × 8.
   const PAD = 5;  // Each piece is drawn inside a 5 × 5 editing pad.
   const TRACE_CAP = 300000; // safety bound on recorded search frames (memory)
+  const GHOST = -1; // origin-grid sentinel: "cleared during this branch", vs. null = never touched
 
   /** A fresh empty N×N board (0 = empty, 1 = filled). */
   function emptyBoard() {
@@ -79,6 +80,21 @@
     for (const r of rows) for (let c = 0; c < N; c++) next[r][c] = 0;
     for (const c of cols) for (let r = 0; r < N; r++) next[r][c] = 0;
     return { board: next, rows, cols };
+  }
+
+  /** Stamp `value` into `grid` at every cell of `offsets` placed at (top,left). */
+  function stampGrid(grid, offsets, top, left, value) {
+    const next = grid.map((row) => row.slice());
+    for (const [dr, dc] of offsets) next[top + dr][left + dc] = value;
+    return next;
+  }
+
+  /** Reset `rows`/`cols` of `grid` to `value` (mirrors clearLines, generic grid). */
+  function clearGrid(grid, rows, cols, value) {
+    const next = grid.map((row) => row.slice());
+    for (const r of rows) for (let c = 0; c < N; c++) next[r][c] = value;
+    for (const c of cols) for (let r = 0; r < N; r++) next[r][c] = value;
+    return next;
   }
 
   // ----------------------------------------------------- board heuristics ----
@@ -197,9 +213,17 @@
    * Pass `opts.trace = true` to also record, in visitation order, EVERY placement
    * the search actually tries (the same events the `explored` counter tallies).
    * The result then carries `trace` — an array of lightweight frames
-   * { board, placedCells, rows, cols, depth, id } — plus `traceTruncated` if the
-   * trace hit `TRACE_CAP`. This is what powers the step-by-step search animation
-   * in the UI; it costs nothing when `opts.trace` is falsy.
+   * { board, origin, placedCells, rows, cols, depth, id } — plus `traceTruncated`
+   * if the trace hit `TRACE_CAP`. `origin[r][c]` is the depth (0, 1, 2, …) of
+   * whichever earlier-in-this-branch piece last filled that cell; `GHOST` (-1)
+   * if a line clear emptied it during this branch; or null if it predates all
+   * three (pre-existing board, or never touched). The GHOST mark sticks until
+   * something actually fills that cell again — it does NOT reset back to null
+   * at the next placement — so the UI can render "just cleared" cells as a
+   * lingering ghost for as long as this branch is being explored, and colour
+   * already-settled placements by which slot made them, distinct from the
+   * placement currently being tried. This is what powers the step-by-step
+   * search animation in the UI; it costs nothing when `opts.trace` is falsy.
    *
    * Complexity is O((N²)^k) worst case for k pieces, but k ≤ 3 here so it is
    * effectively instant. The `explored` counter reports the real work done.
@@ -216,7 +240,9 @@
 
     // `depth` = how many pieces are already placed above this node, i.e. which
     // slot of the plan the placement being tried belongs to (0-based).
-    function search(g, remaining, depth) {
+    // `og` (origin grid) mirrors `g`, cell-for-cell: og[r][c] is the depth that
+    // filled g[r][c], or null. Only maintained when tracing; null otherwise.
+    function search(g, remaining, depth, og) {
       // Baseline: place nothing further. The final board is `g`, so its quality
       // is this leaf's score; whatever is left over is skipped.
       let best = {
@@ -241,10 +267,15 @@
             const placedCells = offsets.map(([dr, dc]) => [t + dr, l + dc]);
             const { board: after, rows, cols } = clearLines(place(g, offsets, t, l));
             const lines = rows.length + cols.length;
-            // Record the attempt (referencing `g`, not a copy) before recursing,
-            // so the trace reads in true depth-first visitation order.
-            if (trace && trace.length < TRACE_CAP) trace.push({ board: g, placedCells, rows, cols, depth, id });
-            const sub = search(after, rest, depth + 1);
+            // Record the attempt (referencing `g`/`og`, not copies) before
+            // recursing, so the trace reads in true depth-first visitation order.
+            if (trace && trace.length < TRACE_CAP) trace.push({ board: g, origin: og, placedCells, rows, cols, depth, id });
+            // Cleared cells are marked GHOST (-1), not null, so the UI can keep
+            // showing them as "just cleared" for as long as this branch of the
+            // search is being explored — only a later placement overwriting the
+            // same cell (via stampGrid, above) replaces the ghost mark for real.
+            const afterOrigin = trace ? clearGrid(stampGrid(og, offsets, t, l, depth), rows, cols, GHOST) : null;
+            const sub = search(after, rest, depth + 1, afterOrigin);
             const candidate = {
               steps: [{ id, top: t, left: l, before: g, placedCells, rows, cols, after }, ...sub.steps],
               clears: lines + sub.clears,
@@ -264,7 +295,8 @@
       return best;
     }
 
-    const result = search(board, pieces, 0);
+    const initialOrigin = trace ? Array.from({ length: N }, () => Array(N).fill(null)) : null;
+    const result = search(board, pieces, 0, initialOrigin);
     result.explored = explored;
     if (trace) {
       result.trace = trace;
