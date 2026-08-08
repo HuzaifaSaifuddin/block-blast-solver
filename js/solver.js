@@ -18,6 +18,7 @@
 
   const N = 8;    // The play board is 8 × 8.
   const PAD = 5;  // Each piece is drawn inside a 5 × 5 editing pad.
+  const TRACE_CAP = 300000; // safety bound on recorded search frames (memory)
 
   /** A fresh empty N×N board (0 = empty, 1 = filled). */
   function emptyBoard() {
@@ -193,10 +194,19 @@
    * Returns { steps, placed, clears, score, skipped, explored } where each step
    * is { id, top, left, before, placedCells, rows, cols, after }.
    *
+   * Pass `opts.trace = true` to also record, in visitation order, EVERY placement
+   * the search actually tries (the same events the `explored` counter tallies).
+   * The result then carries `trace` — an array of lightweight frames
+   * { board, placedCells, rows, cols, depth, id } — plus `traceTruncated` if the
+   * trace hit `TRACE_CAP`. This is what powers the step-by-step search animation
+   * in the UI; it costs nothing when `opts.trace` is falsy.
+   *
    * Complexity is O((N²)^k) worst case for k pieces, but k ≤ 3 here so it is
    * effectively instant. The `explored` counter reports the real work done.
    */
-  function solve(board, pieces) {
+  function solve(board, pieces, opts) {
+    opts = opts || {};
+    const trace = opts.trace ? [] : null; // recorded placements, in visit order
     let explored = 0;
 
     // Identical-shaped pieces are interchangeable, so trying every ordering of
@@ -204,7 +214,9 @@
     // shape key and, at each node, only branch on the first piece of each shape.
     const shapeKey = (p) => JSON.stringify(p.offsets);
 
-    function search(g, remaining) {
+    // `depth` = how many pieces are already placed above this node, i.e. which
+    // slot of the plan the placement being tried belongs to (0-based).
+    function search(g, remaining, depth) {
       // Baseline: place nothing further. The final board is `g`, so its quality
       // is this leaf's score; whatever is left over is skipped.
       let best = {
@@ -229,7 +241,10 @@
             const placedCells = offsets.map(([dr, dc]) => [t + dr, l + dc]);
             const { board: after, rows, cols } = clearLines(place(g, offsets, t, l));
             const lines = rows.length + cols.length;
-            const sub = search(after, rest);
+            // Record the attempt (referencing `g`, not a copy) before recursing,
+            // so the trace reads in true depth-first visitation order.
+            if (trace && trace.length < TRACE_CAP) trace.push({ board: g, placedCells, rows, cols, depth, id });
+            const sub = search(after, rest, depth + 1);
             const candidate = {
               steps: [{ id, top: t, left: l, before: g, placedCells, rows, cols, after }, ...sub.steps],
               clears: lines + sub.clears,
@@ -249,8 +264,12 @@
       return best;
     }
 
-    const result = search(board, pieces);
+    const result = search(board, pieces, 0);
     result.explored = explored;
+    if (trace) {
+      result.trace = trace;
+      result.traceTruncated = explored > trace.length;
+    }
     return result;
   }
 

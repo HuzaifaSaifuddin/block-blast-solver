@@ -12,6 +12,7 @@
 
   const STORAGE_KEY = "block-blast-solver:v2";
   const THEME_KEY = "block-blast-solver:theme";
+  const TRACE_KEY = "block-blast-solver:trace";
 
   // --------------------------------------------------------------- state ----
   let board = emptyBoard();
@@ -217,6 +218,152 @@
     return h + "</div>";
   }
 
+  // ---------------------------------------------- search visualizer ---------
+  // Animated replay of every placement the solver tried, in visitation order.
+  // A trace can be tens of thousands of frames, so playback is a real media
+  // player: play/pause, single-step, a scrubber to jump anywhere, and a delay
+  // slider. The 64 board cells are built once; each frame only toggles classes.
+  let player = null; // { frames, idx, playing, timer, delay, cellEls, ...els }
+
+  const sameCells = (a, b) => {
+    if (a.length !== b.length) return false;
+    const s = new Set(a.map(([r, c]) => r + "," + c));
+    return b.every(([r, c]) => s.has(r + "," + c));
+  };
+
+  // Tag the frames that belong to the winning plan, so the animation can call
+  // them out as they fly by. A chosen step and its frame share the exact same
+  // `before`/`board` array reference (same search node), so identity is safe.
+  function markAccepted(trace, steps) {
+    for (const f of trace)
+      f.accepted = steps.some((s) => s.before === f.board && sameCells(s.placedCells, f.placedCells));
+  }
+
+  function fmtDuration(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 1) return "under a second";
+    if (s < 60) return s + "s";
+    return Math.floor(s / 60) + "m " + (s % 60) + "s";
+  }
+
+  function tracePaint() {
+    const { frames, idx, cellEls } = player;
+    const f = frames[idx];
+    const placed = new Set(f.placedCells.map(([r, c]) => r + "," + c));
+    const clearing = new Set();
+    f.rows.forEach((r) => { for (let c = 0; c < N; c++) clearing.add(r + "," + c); });
+    f.cols.forEach((c) => { for (let r = 0; r < N; r++) clearing.add(r + "," + c); });
+    for (let r = 0; r < N; r++)
+      for (let c = 0; c < N; c++) {
+        const key = r + "," + c;
+        let cls = "tc";
+        if (placed.has(key)) cls += " try d" + (f.depth + 1);
+        else if (f.board[r][c]) cls += " on";
+        if (clearing.has(key)) cls += " clearing";
+        cellEls[r][c].className = cls;
+      }
+    const lines = f.rows.length + f.cols.length;
+    const bits = [
+      `Placement <b>${(idx + 1).toLocaleString()}</b> of ${frames.length.toLocaleString()}`,
+      `trying Block ${f.id} into slot ${f.depth + 1}`,
+    ];
+    if (lines) bits.push(`<span class="tgood">would clear ${lines} line${lines !== 1 ? "s" : ""}</span>`);
+    if (f.accepted) bits.push(`<span class="tkept">✓ kept in the final plan</span>`);
+    player.label.innerHTML = bits.join(" · ");
+    player.scrub.value = idx; // programmatic set does not fire an 'input' event
+  }
+
+  function traceTick() {
+    if (!player || !player.playing) return;
+    if (player.idx >= player.frames.length - 1) { tracePause(); return; }
+    player.idx++;
+    tracePaint();
+    player.timer = setTimeout(traceTick, Math.max(0, player.delay));
+  }
+  function tracePlay() {
+    if (!player) return;
+    if (player.idx >= player.frames.length - 1) player.idx = 0; // replay from the top
+    player.playing = true;
+    player.playBtn.textContent = "❚❚ Pause";
+    player.timer = setTimeout(traceTick, Math.max(0, player.delay));
+  }
+  function tracePause() {
+    if (!player) return;
+    player.playing = false;
+    if (player.timer) clearTimeout(player.timer);
+    player.playBtn.textContent = "▶ Play";
+  }
+  function stopTracePlayer() {
+    if (player && player.timer) clearTimeout(player.timer);
+    player = null;
+    const v = $("#traceView");
+    if (v) v.innerHTML = "";
+  }
+  function hideTrace() {
+    stopTracePlayer();
+    const p = $("#tracePanel");
+    if (p) p.hidden = true;
+  }
+
+  function updateSpeedLabel() {
+    player.speedVal.textContent = player.delay + "ms";
+    player.eta.textContent =
+      `At ${player.delay}ms each, watching all ${player.frames.length.toLocaleString()} ` +
+      `takes ~${fmtDuration(player.frames.length * player.delay)} — drag the top slider to jump anywhere.`;
+  }
+
+  function buildTracePlayer(frames, truncated, explored) {
+    stopTracePlayer();
+    const view = $("#traceView");
+    const trunc = truncated
+      ? `<p class="tracehint">Showing the first ${frames.length.toLocaleString()} of ${explored.toLocaleString()} placements (capped to stay responsive).</p>`
+      : "";
+    view.innerHTML =
+      `<div class="tracewrap">
+        <div class="traceboard" id="tbBoard"></div>
+        <div class="tracemeta">
+          <p class="tracelabel" id="tbLabel"></p>
+          <input type="range" id="tbScrub" class="scrub" min="0" max="${frames.length - 1}" value="0" aria-label="Scrub through explored placements" />
+          <div class="tracectrls">
+            <button id="tbPlay" class="primary sm">▶ Play</button>
+            <button id="tbStepB" class="sm" title="Previous placement" aria-label="Previous placement">‹</button>
+            <button id="tbStepF" class="sm" title="Next placement" aria-label="Next placement">›</button>
+            <button id="tbReset" class="sm" title="Back to start" aria-label="Back to start">⤺</button>
+            <label class="speedlab">delay <input type="range" id="tbSpeed" min="0" max="400" step="5" value="40" aria-label="Delay between placements" /> <span id="tbSpeedVal"></span></label>
+          </div>
+          <p class="tracehint" id="tbEta"></p>
+          ${trunc}
+        </div>
+      </div>`;
+    const boardEl = $("#tbBoard");
+    const cellEls = [];
+    for (let r = 0; r < N; r++) {
+      const row = [];
+      for (let c = 0; c < N; c++) {
+        const d = document.createElement("div");
+        d.className = "tc";
+        boardEl.appendChild(d);
+        row.push(d);
+      }
+      cellEls.push(row);
+    }
+    const speed = $("#tbSpeed");
+    player = {
+      frames, idx: 0, playing: false, timer: null, delay: +speed.value, cellEls,
+      playBtn: $("#tbPlay"), label: $("#tbLabel"), scrub: $("#tbScrub"),
+      speedVal: $("#tbSpeedVal"), eta: $("#tbEta"),
+    };
+    updateSpeedLabel();
+    tracePaint();
+
+    $("#tbPlay").addEventListener("click", () => (player.playing ? tracePause() : tracePlay()));
+    $("#tbStepF").addEventListener("click", () => { tracePause(); if (player.idx < frames.length - 1) { player.idx++; tracePaint(); } });
+    $("#tbStepB").addEventListener("click", () => { tracePause(); if (player.idx > 0) { player.idx--; tracePaint(); } });
+    $("#tbReset").addEventListener("click", () => { tracePause(); player.idx = 0; tracePaint(); });
+    player.scrub.addEventListener("input", (e) => { tracePause(); player.idx = +e.target.value; tracePaint(); });
+    speed.addEventListener("input", (e) => { player.delay = +e.target.value; updateSpeedLabel(); });
+  }
+
   function solveNow() {
     const out = $("#out");
     const list = [];
@@ -227,17 +374,20 @@
     if (!list.length) {
       out.innerHTML = '<p class="note bad">No pieces to place — draw at least one piece.</p>';
       $("#applyBar").hidden = true;
+      hideTrace();
       return;
     }
 
+    const traceOn = $("#traceToggle").checked;
     const t0 = performance.now();
-    const res = solve(board, list);
+    const res = solve(board, list, { trace: traceOn });
     const ms = performance.now() - t0;
     const steps = res.steps;
 
     if (res.placed === 0) {
       out.innerHTML = '<p class="note bad">No piece can be placed on this board at all.</p>';
       $("#applyBar").hidden = true;
+      hideTrace();
       return;
     }
 
@@ -283,6 +433,15 @@
 
     pendingFinal = steps[steps.length - 1].after;
     $("#applyBar").hidden = false;
+
+    // Search visualizer: replay every explored placement, or tear it down.
+    if (traceOn && res.trace && res.trace.length) {
+      markAccepted(res.trace, steps);
+      buildTracePlayer(res.trace, res.traceTruncated, res.explored);
+      $("#tracePanel").hidden = false;
+    } else {
+      hideTrace();
+    }
   }
 
   function applyFinal() {
@@ -334,6 +493,14 @@
     $("#clearMainBtn").addEventListener("click", clearBoard);
     $("#applyBtn").addEventListener("click", applyFinal);
     $("#themeToggle").addEventListener("click", toggleTheme);
+
+    // Search-visualizer toggle: remember the choice; tear the player down when off.
+    const traceToggle = $("#traceToggle");
+    traceToggle.checked = localStorage.getItem(TRACE_KEY) === "1";
+    traceToggle.addEventListener("change", () => {
+      localStorage.setItem(TRACE_KEY, traceToggle.checked ? "1" : "0");
+      if (!traceToggle.checked) hideTrace();
+    });
 
     // Keyboard shortcut: Ctrl/Cmd+Enter solves.
     document.addEventListener("keydown", (e) => {

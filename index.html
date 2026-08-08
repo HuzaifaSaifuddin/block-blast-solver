@@ -52,6 +52,9 @@
     <div class="actions">
       <button id="solveBtn" class="primary">Solve</button>
       <button id="resetBtn">Reset all</button>
+      <label class="switch" title="Replay every placement the solver explores">
+        <input type="checkbox" id="traceToggle" /> <span>Visualize the search</span>
+      </label>
     </div>
   </section>
 
@@ -69,6 +72,14 @@
       <span><span class="swatch" style="background:var(--placed)"></span>just placed</span>
       <span><span class="swatch" style="background:transparent;box-shadow:0 0 0 2px var(--clear) inset"></span>about to clear</span>
     </div>
+  </section>
+
+  <!-- ===== Search visualizer card ===== -->
+  <section class="panel" id="tracePanel" aria-labelledby="trace-title" hidden>
+    <div class="sec-head">
+      <h2 id="trace-title" class="sec-title">Search visualizer <span class="dim">every placement the solver explored, in order</span></h2>
+    </div>
+    <div id="traceView"></div>
   </section>
 
   <p class="foot">100% local · no accounts, no tracking</p>

@@ -17,6 +17,11 @@ accounts, no network, no tracking.
   plus full keyboard control (arrow keys to move, Space/Enter to toggle).
 - **Step-by-step solution** — each move shows the placement and the resulting
   board, with "just placed" and "about to clear" highlighting.
+- **Visualize the search** — an optional mode that replays *every* placement the
+  solver explored, in visitation order, on an animated board: play/pause,
+  single-step, a scrubber to jump anywhere in the (often tens of thousands of)
+  frames, and a delay slider. Candidates are tinted by which piece-slot is being
+  tried, and moves kept in the final plan are called out as they fly by.
 - **Carry forward** — apply the solved result as your new board for the next round.
 - **Light & dark themes** — follows your system preference, with a manual toggle.
 - **Persistent** — your board and pieces survive a refresh (localStorage).
