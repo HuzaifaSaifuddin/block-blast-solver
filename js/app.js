@@ -242,8 +242,8 @@
   function fmtDuration(ms) {
     const s = Math.round(ms / 1000);
     if (s < 1) return "under a second";
-    if (s < 60) return s + "s";
-    return Math.floor(s / 60) + "m " + (s % 60) + "s";
+    if (s < 60) return "~" + s + "s";
+    return "~" + Math.floor(s / 60) + "m " + (s % 60) + "s";
   }
 
   function tracePaint() {
@@ -317,11 +317,19 @@
     if (p) p.hidden = true;
   }
 
+  // Browsers clamp setTimeout(fn, 0) to a real floor, and repainting 64 cells
+  // plus the label costs more on top of that — so "0ms delay" never actually
+  // plays back at 0ms/frame (measured ~5ms/frame in practice, e.g. 1,292
+  // frames took ~6s end to end). Floor the ETA math to match what actually
+  // happens on screen instead of promising an impossible instant run.
+  const MIN_FRAME_MS = 5;
+
   function updateSpeedLabel() {
     player.speedVal.textContent = player.delay + "ms";
+    const perFrame = Math.max(player.delay, MIN_FRAME_MS);
     player.eta.textContent =
       `At ${player.delay}ms each, watching all ${player.frames.length.toLocaleString()} ` +
-      `takes ~${fmtDuration(player.frames.length * player.delay)} — drag the top slider to jump anywhere.`;
+      `takes ${fmtDuration(player.frames.length * perFrame)} — drag the top slider to jump anywhere.`;
   }
 
   function buildTracePlayer(frames, truncated, explored) {
